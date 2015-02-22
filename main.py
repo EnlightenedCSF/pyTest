@@ -3,7 +3,9 @@ __author__ = 'enlightenedcsf'
 import math
 import numpy as np
 import cv2
-import logging
+import networkx as nx
+import matplotlib.pyplot as plt
+from networkx.readwrite import json_graph
 
 
 def nothing(x):
@@ -196,8 +198,8 @@ def are_points_connected(point1, point2, line):
     return True
 
 
-def is_point_dark(point, line):
-    if point[1] < 0 or point[0] < 0:
+def is_point_dark(point):
+    if point[0] < 0 or point[1] < 0:
         return False
     density = []
     if point[0] <= img.shape[1] and point[1] <= img.shape[0]:
@@ -264,10 +266,10 @@ def is_point_dark(point, line):
         #
         # density.append(thres[point[1]-sin*1, point[0]+cos*1])
         # density.append(thres[point[1]-sin*6, point[0]+cos*6])
-        #     density.append(thres[point[1]-sin*9, point[0]+cos*9])
-        #     density.append(thres[point[1]-sin*12, point[0]+cos*12])
+        # density.append(thres[point[1]-sin*9, point[0]+cos*9])
+        # density.append(thres[point[1]-sin*12, point[0]+cos*12])
         # else:
-        #     density.append(thres[point[1] + 1, point[0]])
+        # density.append(thres[point[1] + 1, point[0]])
         #     density.append(thres[point[1] + 3, point[0]])
         #     density.append(thres[point[1] + 6, point[0]])
         #     density.append(thres[point[1] + 9, point[0]])
@@ -297,15 +299,15 @@ def are_points_close(p1, p2, thres):
 
 def extract_vertices_and_edges(input_points, input_lines):
     edges = []
-    cnt = 0
+    # cnt = 0
     for line in input_lines:
-        cnt += 20
+        # cnt += 20
 
         # start_new_edge = True
         points_on_line = get_points_on_line(line, input_points)
         points_on_edge = []
         for p in points_on_line:
-            if is_point_dark(p, line):
+            if is_point_dark(p):
                 points_on_edge.append(p)
         if len(points_on_edge) == 1:
             continue
@@ -345,7 +347,7 @@ def delete_degenerate_edges(test_edges):
                 # for j in range(0, len(result_edges)):
                 # if result_edges[i] is result_edges[j]:
                 # continue
-            # if are_points_close(result_edges[i][0], result_edges[j][0], 7) and are_points_close(result_edges[i][1],
+                # if are_points_close(result_edges[i][0], result_edges[j][0], 7) and are_points_close(result_edges[i][1],
                 # result_edges[j][1],
                 # 7) or are_points_close(
                 # result_edges[i][0], result_edges[j][1], 7) and are_points_close(result_edges[i][1],
@@ -359,12 +361,81 @@ def delete_degenerate_edges(test_edges):
     # for x in to_delete.keys():
     # result_edges. result_edges[x[1]])
 
+    for edge in result_edges:
+        if not test(edge):
+            result_edges.remove(edge)
+
     return result_edges
+
+
+def test(test2edges):
+    # first = is_point_dark(test2edges[0][0])
+    # second = is_point_dark(test2edges[0][1])
+    middle_point = ((test2edges[0][0] + test2edges[1][0]) / 2, (test2edges[0][1] + test2edges[1][1]) / 2)
+    # middle2 = (int(round(middle_point[0])), int(round(middle_point[1])))
+    # cv2.circle(img, middle2, 1, (0, 255, 0), thickness=1)
+    third = is_point_dark(middle_point)
+    # print (third)
+    return third
+
+
+def get_vertex_to_connect(graph, point):
+    for node in graph.nodes():
+        p = graph.node[node]['coords']  # ['coords']
+        if are_points_close(p, point, 3):
+            return node
+    return False
+
+
+def create_graph(edges):
+    g = nx.Graph()
+    i = 0
+    for edge in edges:
+        if g.number_of_nodes() == 0:  # if graph is empty
+            g.add_node(i, coords=[edge[0][0], edge[0][1]])
+            # g[i]['c'] = [edge[0][0], edge[0][1]]
+            i += 1
+            g.add_node(i, coords=[edge[1][0], edge[1][1]])  # , c=(edge[1][0], edge[1][1]))
+            # g[i]['c'] = [edge[1][0], edge[1][1]]
+            i += 1
+            g.add_edge(i - 1, i - 2)
+            # g[i-1][i-2]['hidden'] = False
+        else:
+            node = get_vertex_to_connect(g, edge[0])
+            if node:
+                second_node = get_vertex_to_connect(g, edge[1])
+                if second_node:
+                    g.add_edge(node, second_node)     # there are already 2 nodes, just connect 'em
+                    # g[node][second_node]['hidden'] = False
+                else:
+                    g.add_node(i, coords=[edge[1][0], edge[1][1]])   # create node for only the second point
+                    # g[i]['c'] = [edge[1][0], edge[1][1]]
+                    i += 1
+                    g.add_edge(node, i-1)     # and connect them
+                    # g[node][i-1]['hidden'] = False
+            else:                                                          # if first point is not connected to graph
+                second_node = get_vertex_to_connect(g, edge[1])
+                if second_node:
+                    g.add_node(i, coords=[edge[0][0], edge[0][1]])
+                    # g[i]['c'] = [edge[0][0], edge[0][1]]
+                    i += 1
+                    g.add_edge(second_node, i-1)
+                    # g[second_node][i-1]['hidden'] = False
+                else:
+                    g.add_node(i, coords=[edge[0][0], edge[0][1]])
+                    # g[i]['c'] = [edge[0][0], edge[0][1]]
+                    i += 1
+                    g.add_node(i, coords=[edge[1][0], edge[1][1]])
+                    # g[i]['c'] = [edge[1][0], edge[1][1]]
+                    i += 1
+                    g.add_edge(i-1, i-2)
+                    # g[i-1][i-2]['hidden'] = False
+    return g
 
 
 ########################################################################################################################
 cv2.namedWindow('image')
-cv2.namedWindow('gray')
+# cv2.namedWindow('gray')
 
 # cv2.createTrackbar('rho', 'image', 1, 20, nothing)
 # cv2.createTrackbar('theta', 'image', 30, 180, nothing)
@@ -401,7 +472,7 @@ edges = cv2.Canny(thres, 100, 200)
 
 while 1:
     cv2.imshow('image', img)
-    cv2.imshow('gray', thres)
+    # cv2.imshow('gray', thres)
     # cv2.imshow('edges', edges)
     k = cv2.waitKey(1) & 0xFF
     if k == 27:
@@ -416,9 +487,9 @@ while 1:
     # a = np.cos(t)
     # b = np.sin(t)
     # x0 = a * r
-    #         y0 = b * r
-    #         x1 = int(x0 + 1000 * (-b))
-    #         y1 = int(y0 + 1000 * a)
+    # y0 = b * r
+    # x1 = int(x0 + 1000 * (-b))
+    # y1 = int(y0 + 1000 * a)
     #         x2 = int(x0 - 1000 * (-b))
     #         y2 = int(y0 - 1000 * a)
     #         cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0), 1)
@@ -487,7 +558,22 @@ while 1:
     # test_edges = [test_edges[9]]
     # test_edges = [test_edges[11]]
     test_edges = delete_degenerate_edges(test_edges)
-    print(test_edges)
+    test_edges = delete_degenerate_edges(test_edges)
+
+    graph = create_graph(test_edges)
+    # nx.draw(graph)
+    # plt.show()
+    # data = json_graph.node_link_data(graph)
+    # print(data)
+
+    # print(test_edges)
+    # b = 12
+    # test_2_edges = test_edges[b: b + 5]
+    # test_edges = test_edges[b: b + 5]
+    # test_edges = delete_degenerate_edges(test_edges)
+    # print(test_2_edges)
+    # test2(test_2_edges[0])
+
     cnt = 0
     for p1, p2 in test_edges:
         cv2.line(img, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (255, cnt * 2, cnt), thickness=2)
